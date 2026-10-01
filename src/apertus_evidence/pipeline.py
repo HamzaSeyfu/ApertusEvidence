@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .analysis import ConservativeHeuristicAnalyst
+from .analysis import ConservativeHeuristicAnalyst, EvidenceAnalyst
 from .models import (
     AssessmentLabel,
     Claim,
@@ -24,14 +24,15 @@ class EvidenceCourt:
     """Evidence-first orchestration layer.
 
     Retrieval and semantic analysis are separate on purpose. The heuristic
-    analyst can later be replaced by an Apertus-backed structured analyst.
+    analyst can be replaced by an Apertus-backed structured analyst without
+    changing verdict aggregation.
     """
 
     def __init__(
         self,
         index: InMemoryEvidenceIndex,
         *,
-        analyst: ConservativeHeuristicAnalyst | None = None,
+        analyst: EvidenceAnalyst | None = None,
         config: PipelineConfig | None = None,
     ) -> None:
         self.index = index

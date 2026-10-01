@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from typing import Mapping, Protocol
 
 from .models import AssessmentLabel, Claim, EvidenceAssessment, EvidenceSpan
+from .prompts import EVIDENCE_ANALYST_SYSTEM, build_evidence_analysis_prompt
 from .retrieval import tokenize
 
 _STOPWORDS = {
@@ -15,11 +17,68 @@ _NEGATIONS = {"not", "no", "never", "without", "ne", "pas", "aucun", "aucune", "
 _NUMBER_RE = re.compile(r"\b\d+(?:[.,]\d+)?\b")
 
 
+class EvidenceAnalyst(Protocol):
+    def assess(self, claim: Claim, evidence: EvidenceSpan) -> EvidenceAssessment:
+        ...
+
+
+class JsonGenerationBackend(Protocol):
+    """Provider-neutral contract for Apertus structured generation."""
+
+    def generate_json(self, *, system: str, user: str) -> Mapping[str, object]:
+        ...
+
+
+class ApertusEvidenceAnalyst:
+    """Structured semantic analyst backed by an Apertus inference provider.
+
+    The provider itself is intentionally not hard-coded here. Hackathon compute
+    can therefore be swapped between CSCS, Hugging Face or a local endpoint.
+    """
+
+    def __init__(self, backend: JsonGenerationBackend) -> None:
+        self.backend = backend
+
+    def assess(self, claim: Claim, evidence: EvidenceSpan) -> EvidenceAssessment:
+        try:
+            payload = self.backend.generate_json(
+                system=EVIDENCE_ANALYST_SYSTEM,
+                user=build_evidence_analysis_prompt(claim, evidence),
+            )
+            raw_label = str(payload.get("label", "UNCLEAR")).upper()
+            label = AssessmentLabel(raw_label)
+            score = float(payload.get("score", 0.0))
+            rationale = str(payload.get("rationale", "")).strip()
+
+            if not 0.0 <= score <= 1.0:
+                raise ValueError("score must be in [0, 1]")
+            if label == AssessmentLabel.UNCLEAR:
+                score = 0.0
+            if not rationale:
+                rationale = "Apertus returned no rationale; assessment downgraded."
+                label = AssessmentLabel.UNCLEAR
+                score = 0.0
+
+            return EvidenceAssessment(
+                label=label,
+                score=round(score, 4),
+                rationale=rationale,
+                evidence=evidence,
+            )
+        except (TypeError, ValueError, KeyError) as exc:
+            return EvidenceAssessment(
+                label=AssessmentLabel.UNCLEAR,
+                score=0.0,
+                rationale=f"Structured model output rejected: {exc}",
+                evidence=evidence,
+            )
+
+
 class ConservativeHeuristicAnalyst:
     """Offline baseline.
 
-    It intentionally abstains often. The production Apertus analyst will
-    replace semantic judgment while keeping the same structured contract.
+    It intentionally abstains often. The Apertus analyst replaces semantic
+    judgment while keeping the same structured contract.
     """
 
     def assess(self, claim: Claim, evidence: EvidenceSpan) -> EvidenceAssessment:
