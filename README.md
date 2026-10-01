@@ -140,6 +140,12 @@ The baseline runs locally with **no cloud account, no API key and no bank card**
 
 The Apertus adapter will remain optional so the repository stays reproducible even when external inference is unavailable.
 
-## License
+## Licensing
 
-MIT.
+Hack Apertus requires submitted outputs to remain open under category-specific licenses:
+
+- **source code and model weights:** Apache License 2.0;
+- **documentation, designs and text:** Creative Commons Attribution 4.0 (CC BY 4.0);
+- **submitted datasets:** Community Data License Agreement – Permissive 2.0.
+
+See the repository license files and per-directory notices before reuse.
