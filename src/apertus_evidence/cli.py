@@ -6,6 +6,7 @@ from dataclasses import asdict
 from enum import Enum
 from typing import Any
 
+from .ingest import ingest_path
 from .pipeline import EvidenceCourt
 from .retrieval import InMemoryEvidenceIndex
 
@@ -23,13 +24,34 @@ def _jsonable(value: Any) -> Any:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="apertus-evidence",
-        description="Evidence-first fact checking over a local official-document corpus.",
+        description="Evidence-first fact checking over official source material.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    check = sub.add_parser("check", help="Check one claim against a local corpus.")
+    ingest = sub.add_parser(
+        "ingest",
+        help="Normalize PDF/TXT/MD source documents into a provenance-rich JSONL corpus.",
+    )
+    ingest.add_argument("--input", required=True, help="Source file or directory.")
+    ingest.add_argument("--output", required=True, help="Output JSONL corpus.")
+    ingest.add_argument(
+        "--chunk-chars",
+        type=int,
+        default=1400,
+        help="Approximate maximum characters per chunk (default: 1400).",
+    )
+
+    check = sub.add_parser("check", help="Check one claim against official evidence.")
     check.add_argument("--claim", required=True, help="Factual claim to verify.")
-    check.add_argument("--corpus", required=True, help="Directory containing .txt/.md sources.")
+    source_group = check.add_mutually_exclusive_group(required=True)
+    source_group.add_argument(
+        "--corpus",
+        help="Directory containing local .txt/.md sources (legacy quick path).",
+    )
+    source_group.add_argument(
+        "--index",
+        help="Normalized JSONL corpus produced by the ingest command.",
+    )
     check.add_argument("--json", action="store_true", help="Emit structured JSON.")
     return parser
 
@@ -37,8 +59,17 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
 
+    if args.command == "ingest":
+        count = ingest_path(args.input, args.output, chunk_chars=args.chunk_chars)
+        print(f"Wrote {count} evidence chunk(s) to {args.output}")
+        return 0
+
     if args.command == "check":
-        index = InMemoryEvidenceIndex.from_directory(args.corpus)
+        index = (
+            InMemoryEvidenceIndex.from_jsonl(args.index)
+            if args.index
+            else InMemoryEvidenceIndex.from_directory(args.corpus)
+        )
         result = EvidenceCourt(index).check(args.claim)
 
         if args.json:

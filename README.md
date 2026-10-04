@@ -56,6 +56,44 @@ The first milestone provides:
 
 The local baseline is deliberately modest. Its purpose is to make the end-to-end system testable **before** Apertus inference is connected.
 
+
+## Provenance-first ingestion
+
+Official vote material is typically distributed as PDFs. ApertusEvidence keeps
+the extraction boundary aligned with source pages so a downstream verdict can
+always point back to the exact page that produced the evidence.
+
+Install PDF support:
+
+```bash
+python -m pip install -e ".[pdf,dev]"
+```
+
+Normalize an official-material directory:
+
+```bash
+apertus-evidence ingest \
+  --input data/raw \
+  --output data/processed/official.jsonl
+```
+
+Each JSONL record contains:
+
+- extracted text;
+- stable `source_id`;
+- page/chunk locator such as `booklet.pdf#page=7&chunk=2`;
+- SHA-256 of the source file;
+- page/chunk metadata.
+
+Run the court against the normalized corpus:
+
+```bash
+apertus-evidence check \
+  --claim "The measure allocates 10 million francs." \
+  --index data/processed/official.jsonl \
+  --json
+```
+
 ## Planned Hack Apertus path
 
 1. **Official material ingestion**

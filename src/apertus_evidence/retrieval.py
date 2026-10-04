@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Iterable
 
 from .models import EvidenceSpan
 
@@ -16,24 +18,31 @@ def tokenize(text: str) -> list[str]:
 
 
 @dataclass(frozen=True, slots=True)
-class _Chunk:
+class CorpusChunk:
     text: str
     source_id: str
     locator: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+# Backwards-compatible alias for the initial tests/API.
+_Chunk = CorpusChunk
 
 
 class InMemoryEvidenceIndex:
     """Small deterministic lexical index for local/offline development.
 
-    This is intentionally dependency-free. It gives the project a reproducible
-    retrieval baseline before embeddings or hybrid retrieval are introduced.
+    The index accepts provenance-rich chunks produced by the ingestion pipeline.
+    Lexical retrieval remains intentionally dependency-free so the repository
+    has a reproducible fallback even without model/embedding infrastructure.
     """
 
-    def __init__(self, chunks: list[_Chunk]) -> None:
-        if not chunks:
+    def __init__(self, chunks: Iterable[CorpusChunk]) -> None:
+        materialized = list(chunks)
+        if not materialized:
             raise ValueError("Evidence index requires at least one chunk.")
-        self._chunks = chunks
-        self._term_sets = [set(tokenize(chunk.text)) for chunk in chunks]
+        self._chunks = materialized
+        self._term_sets = [set(tokenize(chunk.text)) for chunk in materialized]
         self._idf = self._build_idf(self._term_sets)
 
     @classmethod
@@ -47,7 +56,7 @@ class InMemoryEvidenceIndex:
         if not root.exists():
             raise FileNotFoundError(f"Corpus directory does not exist: {root}")
 
-        chunks: list[_Chunk] = []
+        chunks: list[CorpusChunk] = []
         allowed = {".txt", ".md"}
 
         for path in sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in allowed):
@@ -55,15 +64,40 @@ class InMemoryEvidenceIndex:
             relative = path.relative_to(root).as_posix()
             for idx, chunk_text in enumerate(_chunk_text(text, chunk_chars=chunk_chars), start=1):
                 chunks.append(
-                    _Chunk(
+                    CorpusChunk(
                         text=chunk_text,
                         source_id=relative,
                         locator=f"{relative}#chunk-{idx}",
+                        metadata={"format": path.suffix.lower().lstrip(".")},
                     )
                 )
 
         if not chunks:
             raise ValueError(f"No .txt or .md evidence documents found in {root}")
+        return cls(chunks)
+
+    @classmethod
+    def from_jsonl(cls, path: str | Path) -> "InMemoryEvidenceIndex":
+        index_path = Path(path)
+        chunks: list[CorpusChunk] = []
+        with index_path.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                payload = json.loads(line)
+                try:
+                    chunks.append(
+                        CorpusChunk(
+                            text=str(payload["text"]),
+                            source_id=str(payload["source_id"]),
+                            locator=str(payload["locator"]),
+                            metadata=dict(payload.get("metadata") or {}),
+                        )
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"Invalid corpus record at {index_path}:{line_number}: {exc}"
+                    ) from exc
         return cls(chunks)
 
     @staticmethod
@@ -102,6 +136,7 @@ class InMemoryEvidenceIndex:
                     source_id=chunk.source_id,
                     locator=chunk.locator,
                     retrieval_score=round(score, 4),
+                    metadata=dict(chunk.metadata),
                 )
             )
 
