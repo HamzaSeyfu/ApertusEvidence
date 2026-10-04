@@ -94,6 +94,29 @@ apertus-evidence check \
   --json
 ```
 
+
+## Evaluation harness
+
+Verdict quality is measured, not eyeballed. Labeled claims use JSONL:
+
+```json
+{"case_id":"claim-001","claim":"The measure allocates 10 million francs.","expected_verdict":"SUPPORTED"}
+```
+
+Run:
+
+```bash
+apertus-evidence evaluate \
+  --index data/processed/official.jsonl \
+  --cases data/eval/demo_cases.jsonl \
+  --json
+```
+
+The report includes accuracy, macro-F1 across all verdict classes, per-class
+precision/recall/F1, and the exact failed cases. This will let us compare the
+local baseline, Apertus prompting strategies, retrieval variants and later
+adversarial-agent variants on the same cases.
+
 ## Planned Hack Apertus path
 
 1. **Official material ingestion**

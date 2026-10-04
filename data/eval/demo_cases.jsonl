@@ -1,0 +1,2 @@
+{"case_id":"demo-supported","claim":"The measure allocates 10 million francs.","expected_verdict":"SUPPORTED"}
+{"case_id":"demo-contradicted","claim":"The measure allocates 12 million francs.","expected_verdict":"CONTRADICTED"}

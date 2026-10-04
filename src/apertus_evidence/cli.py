@@ -41,6 +41,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Approximate maximum characters per chunk (default: 1400).",
     )
 
+    evaluate = sub.add_parser(
+        "evaluate",
+        help="Evaluate verdict quality against labeled JSONL claims.",
+    )
+    evaluate.add_argument("--index", required=True, help="Normalized evidence JSONL.")
+    evaluate.add_argument("--cases", required=True, help="Labeled claim JSONL.")
+    evaluate.add_argument("--json", action="store_true", help="Emit structured JSON.")
+
     check = sub.add_parser("check", help="Check one claim against official evidence.")
     check.add_argument("--claim", required=True, help="Factual claim to verify.")
     source_group = check.add_mutually_exclusive_group(required=True)
@@ -62,6 +70,26 @@ def main() -> int:
     if args.command == "ingest":
         count = ingest_path(args.input, args.output, chunk_chars=args.chunk_chars)
         print(f"Wrote {count} evidence chunk(s) to {args.output}")
+        return 0
+
+    if args.command == "evaluate":
+        from .evaluation import evaluate_files
+
+        summary = evaluate_files(index_path=args.index, cases_path=args.cases)
+        if args.json:
+            print(json.dumps(summary.to_dict(), indent=2, ensure_ascii=False))
+        else:
+            print(f"Cases:     {summary.total}")
+            print(f"Correct:   {summary.correct}")
+            print(f"Accuracy:  {summary.accuracy:.3f}")
+            print(f"Macro F1:  {summary.macro_f1:.3f}")
+            if summary.failures:
+                print("\nFailures:")
+                for failure in summary.failures:
+                    print(
+                        f"  - {failure['case_id']}: expected={failure['expected']} "
+                        f"predicted={failure['predicted']}"
+                    )
         return 0
 
     if args.command == "check":
