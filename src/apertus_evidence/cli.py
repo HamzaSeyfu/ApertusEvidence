@@ -79,6 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--index", required=True, help="Normalized evidence JSONL.")
     evaluate.add_argument("--cases", required=True, help="Labeled claim JSONL.")
     evaluate.add_argument("--json", action="store_true", help="Emit structured JSON.")
+    _add_reasoning_options(evaluate)
 
     check = sub.add_parser("check", help="Check one claim against official evidence.")
     check.add_argument("--claim", required=True, help="Factual claim to verify.")
@@ -119,16 +120,20 @@ def main() -> int:
         return 0
 
     if args.command == "evaluate":
-        from .evaluation import evaluate_files
+        from .evaluation import evaluate, load_cases
 
-        summary = evaluate_files(index_path=args.index, cases_path=args.cases)
+        index = InMemoryEvidenceIndex.from_jsonl(args.index)
+        court = _build_court(args, index)
+        summary = evaluate(court, load_cases(args.cases))
         if args.json:
             print(json.dumps(summary.to_dict(), indent=2, ensure_ascii=False))
         else:
-            print(f"Cases:     {summary.total}")
-            print(f"Correct:   {summary.correct}")
-            print(f"Accuracy:  {summary.accuracy:.3f}")
-            print(f"Macro F1:  {summary.macro_f1:.3f}")
+            print(f"Cases:          {summary.total}")
+            print(f"Correct:        {summary.correct}")
+            print(f"Accuracy:       {summary.accuracy:.3f}")
+            print(f"Macro F1:       {summary.macro_f1:.3f}")
+            print(f"Decisive rate:  {summary.decisive_rate:.3f}")
+            print(f"Abstention:     {summary.abstention_rate:.3f}")
             if summary.failures:
                 print("\nFailures:")
                 for failure in summary.failures:

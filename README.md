@@ -178,9 +178,22 @@ apertus-evidence evaluate \
 ```
 
 The report includes accuracy, macro-F1 across all verdict classes, per-class
-precision/recall/F1, and the exact failed cases. This will let us compare the
-local baseline, Apertus prompting strategies, retrieval variants and later
-adversarial-agent variants on the same cases.
+precision/recall/F1, **decisive rate**, **abstention rate**, and the exact failed
+cases. The same command can benchmark the local baseline, Apertus single-pass
+reasoning, or the adversarial court:
+
+```bash
+apertus-evidence evaluate \
+  --index data/processed/official.jsonl \
+  --cases data/eval/demo_cases.jsonl \
+  --reasoner apertus \
+  --court adversarial \
+  --json
+```
+
+This matters because a fact-checker should not be rewarded for answering every
+claim. A good evidence-first system must be both accurate **and willing to
+abstain when official evidence is insufficient**.
 
 ## Planned Hack Apertus path
 

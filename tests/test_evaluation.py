@@ -43,5 +43,23 @@ def test_evaluation_reports_accuracy_and_failure_details() -> None:
     assert summary.correct == 2
     assert summary.accuracy == 1.0
     assert summary.failures == ()
+    assert summary.decisive_rate == 1.0
+    assert summary.abstention_rate == 0.0
     assert summary.per_label["SUPPORTED"]["tp"] == 1
     assert summary.per_label["CONTRADICTED"]["tp"] == 1
+
+
+def test_evaluation_measures_abstention_rate() -> None:
+    cases = [
+        EvaluationCase(
+            case_id="unanswerable",
+            claim="The document guarantees free rail travel nationwide.",
+            expected_verdict=Verdict.INSUFFICIENT_EVIDENCE,
+        )
+    ]
+
+    summary = evaluate(build_court(), cases)
+
+    assert summary.accuracy == 1.0
+    assert summary.abstention_rate == 1.0
+    assert summary.decisive_rate == 0.0

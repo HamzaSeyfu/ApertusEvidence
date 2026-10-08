@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Protocol
 
-from .models import Verdict
-from .pipeline import EvidenceCourt
-from .retrieval import InMemoryEvidenceIndex
+from .models import FactCheckResult, Verdict
+
+
+class FactChecker(Protocol):
+    def check(self, claim_text: str) -> FactCheckResult:
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +26,8 @@ class EvaluationSummary:
     correct: int
     accuracy: float
     macro_f1: float
+    decisive_rate: float
+    abstention_rate: float
     per_label: dict[str, dict[str, float | int]]
     failures: tuple[dict[str, str], ...]
 
@@ -33,6 +37,8 @@ class EvaluationSummary:
             "correct": self.correct,
             "accuracy": self.accuracy,
             "macro_f1": self.macro_f1,
+            "decisive_rate": self.decisive_rate,
+            "abstention_rate": self.abstention_rate,
             "per_label": self.per_label,
             "failures": list(self.failures),
         }
@@ -48,10 +54,13 @@ def load_cases(path: str | Path) -> list[EvaluationCase]:
             payload = json.loads(line)
             try:
                 verdict = Verdict(str(payload["expected_verdict"]).upper())
+                claim = str(payload["claim"]).strip()
+                if not claim:
+                    raise ValueError("claim cannot be empty")
                 cases.append(
                     EvaluationCase(
                         case_id=str(payload.get("case_id") or f"case-{line_number}"),
-                        claim=str(payload["claim"]).strip(),
+                        claim=claim,
                         expected_verdict=verdict,
                     )
                 )
@@ -66,22 +75,23 @@ def load_cases(path: str | Path) -> list[EvaluationCase]:
 
 
 def evaluate(
-    court: EvidenceCourt,
+    court: FactChecker,
     cases: Iterable[EvaluationCase],
 ) -> EvaluationSummary:
     materialized = list(cases)
     labels = list(Verdict)
-    counts = {
-        label: {"tp": 0, "fp": 0, "fn": 0}
-        for label in labels
-    }
+    counts = {label: {"tp": 0, "fp": 0, "fn": 0} for label in labels}
     failures: list[dict[str, str]] = []
     correct = 0
+    abstentions = 0
 
     for case in materialized:
         result = court.check(case.claim)
         predicted = result.verdict
         expected = case.expected_verdict
+
+        if predicted == Verdict.INSUFFICIENT_EVIDENCE:
+            abstentions += 1
 
         if predicted == expected:
             correct += 1
@@ -127,21 +137,14 @@ def evaluate(
         f1_scores.append(f1)
 
     total = len(materialized)
+    abstention_rate = abstentions / total if total else 0.0
     return EvaluationSummary(
         total=total,
         correct=correct,
         accuracy=round(correct / total if total else 0.0, 4),
         macro_f1=round(sum(f1_scores) / len(f1_scores), 4),
+        decisive_rate=round(1.0 - abstention_rate, 4),
+        abstention_rate=round(abstention_rate, 4),
         per_label=per_label,
         failures=tuple(failures),
     )
-
-
-def evaluate_files(
-    *,
-    index_path: str | Path,
-    cases_path: str | Path,
-) -> EvaluationSummary:
-    index = InMemoryEvidenceIndex.from_jsonl(index_path)
-    court = EvidenceCourt(index)
-    return evaluate(court, load_cases(cases_path))
