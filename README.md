@@ -95,6 +95,37 @@ apertus-evidence check \
 ```
 
 
+
+## Running with Apertus
+
+The core does not require a paid cloud account or a vendor SDK. Any
+**OpenAI-compatible chat endpoint** serving Apertus can be used, including a
+local server or hackathon-provided inference endpoint.
+
+Configure it with environment variables:
+
+```bash
+export APERTUS_BASE_URL=http://localhost:8000
+export APERTUS_MODEL=swiss-ai/Apertus-8B-Instruct
+# APERTUS_API_KEY is optional for tokenless/local endpoints
+```
+
+Then switch the semantic reasoner from the deterministic offline baseline to
+Apertus:
+
+```bash
+apertus-evidence check \
+  --claim "The measure allocates 10 million francs." \
+  --index data/processed/official.jsonl \
+  --reasoner apertus \
+  --json
+```
+
+The HTTP adapter requests strict JSON, validates the response, and the
+evidence analyst fails closed to `UNCLEAR` when model output is malformed.
+No model response can bypass the provenance requirement.
+
+
 ## Evaluation harness
 
 Verdict quality is measured, not eyeballed. Labeled claims use JSONL:

@@ -6,6 +6,8 @@ from dataclasses import asdict
 from enum import Enum
 from typing import Any
 
+from .analysis import ApertusEvidenceAnalyst
+from .backend import OpenAICompatibleJsonBackend
 from .ingest import ingest_path
 from .pipeline import EvidenceCourt
 from .retrieval import InMemoryEvidenceIndex
@@ -19,6 +21,28 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
     return value
+
+
+def _add_reasoning_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--reasoner",
+        choices=("heuristic", "apertus"),
+        default="heuristic",
+        help="Semantic evidence reasoner (default: heuristic).",
+    )
+    parser.add_argument(
+        "--apertus-base-url",
+        help="OpenAI-compatible Apertus endpoint. Can also use APERTUS_BASE_URL.",
+    )
+    parser.add_argument(
+        "--apertus-model",
+        help="Apertus model identifier. Can also use APERTUS_MODEL.",
+    )
+    parser.add_argument(
+        "--api-key-env",
+        default="APERTUS_API_KEY",
+        help="Environment variable containing an optional bearer token.",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,7 +85,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Normalized JSONL corpus produced by the ingest command.",
     )
     check.add_argument("--json", action="store_true", help="Emit structured JSON.")
+    _add_reasoning_options(check)
     return parser
+
+
+def _build_court(args: argparse.Namespace, index: InMemoryEvidenceIndex) -> EvidenceCourt:
+    if args.reasoner == "heuristic":
+        return EvidenceCourt(index)
+
+    backend = OpenAICompatibleJsonBackend.from_env(
+        base_url=args.apertus_base_url,
+        model=args.apertus_model,
+        api_key_env=args.api_key_env,
+    )
+    return EvidenceCourt(index, analyst=ApertusEvidenceAnalyst(backend))
 
 
 def main() -> int:
@@ -98,7 +135,8 @@ def main() -> int:
             if args.index
             else InMemoryEvidenceIndex.from_directory(args.corpus)
         )
-        result = EvidenceCourt(index).check(args.claim)
+        court = _build_court(args, index)
+        result = court.check(args.claim)
 
         if args.json:
             print(json.dumps(_jsonable(asdict(result)), indent=2, ensure_ascii=False))
