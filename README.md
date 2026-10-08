@@ -42,7 +42,7 @@ ApertusEvidence is intentionally conservative:
 
 ## Current status
 
-### v0.1 — local evidence engine
+### v0.3 — adversarial Apertus evidence court
 
 The first milestone provides:
 
@@ -124,6 +124,40 @@ apertus-evidence check \
 The HTTP adapter requests strict JSON, validates the response, and the
 evidence analyst fails closed to `UNCLEAR` when model output is malformed.
 No model response can bypass the provenance requirement.
+
+
+
+## Adversarial Evidence Court
+
+The stronger runtime path evaluates retrieved official passages twice, from
+opposing factual roles:
+
+```text
+retrieved passage
+   ├── Support Agent: "does this directly support the claim?"
+   └── Contradiction Agent: "does this directly conflict with the claim?"
+                         ↓
+                  Citation-bound Judge
+                         ↓
+              verdict or forced abstention
+```
+
+Run it with Apertus:
+
+```bash
+apertus-evidence check \
+  --claim "The measure allocates 10 million francs." \
+  --index data/processed/official.jsonl \
+  --reasoner apertus \
+  --court adversarial \
+  --json
+```
+
+The two agents are deliberately asymmetric: absence of support is **not**
+treated as contradiction, and absence of contradiction is **not** treated as
+support. The judge may cite only evidence IDs it was actually given. Unknown or
+missing citations invalidate the judgment and force
+`INSUFFICIENT_EVIDENCE`.
 
 
 ## Evaluation harness

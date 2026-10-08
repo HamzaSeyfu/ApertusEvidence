@@ -6,6 +6,7 @@ from dataclasses import asdict
 from enum import Enum
 from typing import Any
 
+from .agents import AdversarialEvidenceCourt
 from .analysis import ApertusEvidenceAnalyst
 from .backend import OpenAICompatibleJsonBackend
 from .ingest import ingest_path
@@ -42,6 +43,12 @@ def _add_reasoning_options(parser: argparse.ArgumentParser) -> None:
         "--api-key-env",
         default="APERTUS_API_KEY",
         help="Environment variable containing an optional bearer token.",
+    )
+    parser.add_argument(
+        "--court",
+        choices=("single", "adversarial"),
+        default="single",
+        help="Use single-pass analysis or the two-sided Evidence Court.",
     )
 
 
@@ -98,6 +105,8 @@ def _build_court(args: argparse.Namespace, index: InMemoryEvidenceIndex) -> Evid
         model=args.apertus_model,
         api_key_env=args.api_key_env,
     )
+    if args.court == "adversarial":
+        return AdversarialEvidenceCourt(index, backend)
     return EvidenceCourt(index, analyst=ApertusEvidenceAnalyst(backend))
 
 
