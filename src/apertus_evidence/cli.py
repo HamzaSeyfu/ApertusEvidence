@@ -11,6 +11,7 @@ from .analysis import ApertusEvidenceAnalyst
 from .backend import OpenAICompatibleJsonBackend
 from .decomposition import ApertusClaimDecomposer
 from .ingest import ingest_path
+from .ost_dataset import OST_DATASET_NAME, prepare_ost_dataset
 from .pipeline import EvidenceCourt
 from .retrieval import InMemoryEvidenceIndex
 
@@ -59,6 +60,33 @@ def build_parser() -> argparse.ArgumentParser:
         description="Evidence-first fact checking over official source material.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    prepare_ost = sub.add_parser(
+        "prepare-ost",
+        help="Download and normalize the official OST voting-booklet benchmark.",
+    )
+    prepare_ost.add_argument(
+        "--output-dir",
+        default="data/ost",
+        help="Destination directory (default: data/ost).",
+    )
+    prepare_ost.add_argument(
+        "--dataset-name",
+        default=OST_DATASET_NAME,
+        help="Hugging Face dataset identifier.",
+    )
+    prepare_ost.add_argument("--split", default="train", help="Dataset split.")
+    prepare_ost.add_argument(
+        "--chunk-chars",
+        type=int,
+        default=1800,
+        help="Approximate maximum characters per evidence chunk.",
+    )
+    prepare_ost.add_argument(
+        "--limit",
+        type=int,
+        help="Optional row limit for local smoke tests.",
+    )
 
     ingest = sub.add_parser(
         "ingest",
@@ -122,6 +150,17 @@ def _build_court(
 
 def main() -> int:
     args = build_parser().parse_args()
+
+    if args.command == "prepare-ost":
+        summary = prepare_ost_dataset(
+            args.output_dir,
+            dataset_name=args.dataset_name,
+            split=args.split,
+            chunk_chars=args.chunk_chars,
+            limit=args.limit,
+        )
+        print(json.dumps(summary.to_dict(), indent=2, ensure_ascii=False))
+        return 0
 
     if args.command == "ingest":
         count = ingest_path(args.input, args.output, chunk_chars=args.chunk_chars)
