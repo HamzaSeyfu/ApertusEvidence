@@ -171,6 +171,55 @@ the cited passages; if those passages do not justify the proposed verdict, the
 system forces `INSUFFICIENT_EVIDENCE`.
 
 
+
+## Official OST benchmark
+
+ApertusEvidence can prepare the official Hack Apertus benchmark
+`OSTswiss/MNLIoverSwissVotingBooklets` directly from Hugging Face.
+
+Install the optional dataset dependency:
+
+```bash
+python -m pip install -e ".[ost]"
+```
+
+Prepare the benchmark:
+
+```bash
+apertus-evidence prepare-ost --output-dir data/ost
+```
+
+This creates a deduplicated evidence corpus, labeled evaluation cases, and a
+manifest containing label/language distributions and provenance. The source
+dataset keeps its own upstream license; generated benchmark files are local
+working data and are ignored by Git.
+
+The benchmark labels map as follows:
+
+- `0 / Entailment → SUPPORTED`
+- `1 / Neutral → INSUFFICIENT_EVIDENCE`
+- `2 / Contradiction → CONTRADICTED`
+
+Use `--limit 50` for a quick smoke dataset.
+
+### Measure reasoning separately from retrieval
+
+The OST benchmark pairs every claim with the reference material used for that
+example. To test the NLI reasoning layer without retrieval noise:
+
+```bash
+apertus-evidence evaluate-ost-pairs \
+  --evidence data/ost/ost_evidence.jsonl \
+  --cases data/ost/ost_cases.jsonl \
+  --reasoner apertus \
+  --json
+```
+
+Then use the normal `evaluate` command over the full OST corpus to measure the
+complete retrieval + reasoning pipeline. Keeping both numbers separate makes
+failure analysis much more honest, especially for cross-language claim/reference
+pairs.
+
 ## Evaluation harness
 
 Verdict quality is measured, not eyeballed. Labeled claims use JSONL:
