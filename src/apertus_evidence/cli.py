@@ -6,9 +6,9 @@ from dataclasses import asdict
 from enum import Enum
 from typing import Any
 
-from .agents import AdversarialEvidenceCourt
+from .agents import AdversarialEvidenceCourt, CitationAuditor
 from .analysis import ApertusEvidenceAnalyst
-from .backend import OpenAICompatibleJsonBackend
+from .backend import OpenAICompatibleJsonBackend\nfrom .decomposition import ApertusClaimDecomposer
 from .ingest import ingest_path
 from .pipeline import EvidenceCourt
 from .retrieval import InMemoryEvidenceIndex
@@ -107,7 +107,12 @@ def _build_court(args: argparse.Namespace, index: InMemoryEvidenceIndex) -> Evid
         api_key_env=args.api_key_env,
     )
     if args.court == "adversarial":
-        return AdversarialEvidenceCourt(index, backend)
+        return AdversarialEvidenceCourt(
+            index,
+            backend,
+            decomposer=ApertusClaimDecomposer(backend),
+            citation_auditor=CitationAuditor(backend),
+        )
     return EvidenceCourt(index, analyst=ApertusEvidenceAnalyst(backend))
 
 

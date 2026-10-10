@@ -1,7 +1,7 @@
 """ApertusEvidence: evidence-first fact checking over official documents."""
 
-from .agents import AdversarialEvidenceCourt
-from .backend import OpenAICompatibleJsonBackend
+from .agents import AdversarialEvidenceCourt, CitationAuditor
+from .backend import OpenAICompatibleJsonBackend\nfrom .decomposition import ApertusClaimDecomposer
 from .models import Claim, EvidenceSpan, FactCheckResult, Verdict
 from .pipeline import EvidenceCourt, PipelineConfig
 
@@ -13,7 +13,7 @@ __all__ = [
     "EvidenceCourt",
     "PipelineConfig",
     "OpenAICompatibleJsonBackend",
-    "AdversarialEvidenceCourt",
+    "AdversarialEvidenceCourt",\n    "CitationAuditor",\n    "ApertusClaimDecomposer",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
