@@ -42,19 +42,23 @@ ApertusEvidence is intentionally conservative:
 
 ## Current status
 
-### v0.3 — adversarial Apertus evidence court
+### v0.4 — audited adversarial evidence court
 
-The first milestone provides:
+The current milestone provides:
 
-- typed claim/evidence/result models;
-- dependency-free lexical retrieval over local official documents;
-- conservative local support/contradiction baseline;
-- evidence aggregation and verdict logic;
-- citation audit hooks;
-- command-line fact checking;
-- unit tests.
+- provenance-preserving PDF/TXT/MD ingestion;
+- deterministic multi-signal retrieval with BM25-style ranking, weighted term
+  coverage, phrase signals and contradiction-friendly numeric matching;
+- Apertus claim decomposition for compound factual statements;
+- independent Support and Contradiction agents;
+- a citation-constrained Judge;
+- an independent Citation Auditor that can veto the Judge;
+- abstention-first verdicts and evaluation metrics;
+- a local heuristic fallback requiring no paid cloud service;
+- CI-tested command-line workflows.
 
-The local baseline is deliberately modest. Its purpose is to make the end-to-end system testable **before** Apertus inference is connected.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the trust boundaries and
+v0.4 execution flow.
 
 
 ## Provenance-first ingestion
@@ -133,13 +137,19 @@ The stronger runtime path evaluates retrieved official passages twice, from
 opposing factual roles:
 
 ```text
-retrieved passage
-   ├── Support Agent: "does this directly support the claim?"
-   └── Contradiction Agent: "does this directly conflict with the claim?"
-                         ↓
-                  Citation-bound Judge
-                         ↓
-              verdict or forced abstention
+claim → atomic retrieval queries
+              ↓
+      multi-signal retrieval
+              ↓
+retrieved official passages
+   ├── Support Agent
+   └── Contradiction Agent
+              ↓
+      Citation-bound Judge
+              ↓
+   Independent Citation Auditor
+              ↓
+      verdict or abstention
 ```
 
 Run it with Apertus:
@@ -156,9 +166,59 @@ apertus-evidence check \
 The two agents are deliberately asymmetric: absence of support is **not**
 treated as contradiction, and absence of contradiction is **not** treated as
 support. The judge may cite only evidence IDs it was actually given. Unknown or
-missing citations invalidate the judgment and force
-`INSUFFICIENT_EVIDENCE`.
+missing citations invalidate the judgment. A second model pass then audits only
+the cited passages; if those passages do not justify the proposed verdict, the
+system forces `INSUFFICIENT_EVIDENCE`.
 
+
+
+## Official OST benchmark
+
+ApertusEvidence can prepare the official Hack Apertus benchmark
+`OSTswiss/MNLIoverSwissVotingBooklets` directly from Hugging Face.
+
+Install the optional dataset dependency:
+
+```bash
+python -m pip install -e ".[ost]"
+```
+
+Prepare the benchmark:
+
+```bash
+apertus-evidence prepare-ost --output-dir data/ost
+```
+
+This creates a deduplicated evidence corpus, labeled evaluation cases, and a
+manifest containing label/language distributions and provenance. The source
+dataset keeps its own upstream license; generated benchmark files are local
+working data and are ignored by Git.
+
+The benchmark labels map as follows:
+
+- `0 / Entailment → SUPPORTED`
+- `1 / Neutral → INSUFFICIENT_EVIDENCE`
+- `2 / Contradiction → CONTRADICTED`
+
+Use `--limit 50` for a quick smoke dataset.
+
+### Measure reasoning separately from retrieval
+
+The OST benchmark pairs every claim with the reference material used for that
+example. To test the NLI reasoning layer without retrieval noise:
+
+```bash
+apertus-evidence evaluate-ost-pairs \
+  --evidence data/ost/ost_evidence.jsonl \
+  --cases data/ost/ost_cases.jsonl \
+  --reasoner apertus \
+  --json
+```
+
+Then use the normal `evaluate` command over the full OST corpus to measure the
+complete retrieval + reasoning pipeline. Keeping both numbers separate makes
+failure analysis much more honest, especially for cross-language claim/reference
+pairs.
 
 ## Evaluation harness
 

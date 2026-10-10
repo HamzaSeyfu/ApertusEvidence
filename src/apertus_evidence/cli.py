@@ -6,10 +6,12 @@ from dataclasses import asdict
 from enum import Enum
 from typing import Any
 
-from .agents import AdversarialEvidenceCourt
-from .analysis import ApertusEvidenceAnalyst
+from .agents import AdversarialEvidenceCourt, CitationAuditor
+from .analysis import ApertusEvidenceAnalyst, ConservativeHeuristicAnalyst
 from .backend import OpenAICompatibleJsonBackend
+from .decomposition import ApertusClaimDecomposer
 from .ingest import ingest_path
+from .ost_dataset import OST_DATASET_NAME, prepare_ost_dataset
 from .pipeline import EvidenceCourt
 from .retrieval import InMemoryEvidenceIndex
 
@@ -48,7 +50,7 @@ def _add_reasoning_options(parser: argparse.ArgumentParser) -> None:
         "--court",
         choices=("single", "adversarial"),
         default="single",
-        help="Use single-pass analysis or the two-sided Evidence Court.",
+        help="Use single-pass analysis or the full adversarial Evidence Court.",
     )
 
 
@@ -58,6 +60,63 @@ def build_parser() -> argparse.ArgumentParser:
         description="Evidence-first fact checking over official source material.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    prepare_ost = sub.add_parser(
+        "prepare-ost",
+        help="Download and normalize the official OST voting-booklet benchmark.",
+    )
+    prepare_ost.add_argument(
+        "--output-dir",
+        default="data/ost",
+        help="Destination directory (default: data/ost).",
+    )
+    prepare_ost.add_argument(
+        "--dataset-name",
+        default=OST_DATASET_NAME,
+        help="Hugging Face dataset identifier.",
+    )
+    prepare_ost.add_argument("--split", default="train", help="Dataset split.")
+    prepare_ost.add_argument(
+        "--chunk-chars",
+        type=int,
+        default=1800,
+        help="Approximate maximum characters per evidence chunk.",
+    )
+    prepare_ost.add_argument(
+        "--limit",
+        type=int,
+        help="Optional row limit for local smoke tests.",
+    )
+
+
+    evaluate_ost = sub.add_parser(
+        "evaluate-ost-pairs",
+        help="Evaluate NLI reasoning on OST claim/reference pairs without retrieval.",
+    )
+    evaluate_ost.add_argument(
+        "--evidence",
+        default="data/ost/ost_evidence.jsonl",
+        help="Prepared OST evidence JSONL.",
+    )
+    evaluate_ost.add_argument(
+        "--cases",
+        default="data/ost/ost_cases.jsonl",
+        help="Prepared OST cases JSONL.",
+    )
+    evaluate_ost.add_argument(
+        "--reasoner",
+        choices=("heuristic", "apertus"),
+        default="heuristic",
+        help="Pairwise evidence reasoner.",
+    )
+    evaluate_ost.add_argument("--apertus-base-url")
+    evaluate_ost.add_argument("--apertus-model")
+    evaluate_ost.add_argument("--api-key-env", default="APERTUS_API_KEY")
+    evaluate_ost.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit structured JSON.",
+    )
 
     ingest = sub.add_parser(
         "ingest",
@@ -97,7 +156,10 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_court(args: argparse.Namespace, index: InMemoryEvidenceIndex) -> EvidenceCourt:
+def _build_court(
+    args: argparse.Namespace,
+    index: InMemoryEvidenceIndex,
+) -> EvidenceCourt | AdversarialEvidenceCourt:
     if args.reasoner == "heuristic":
         return EvidenceCourt(index)
 
@@ -107,12 +169,58 @@ def _build_court(args: argparse.Namespace, index: InMemoryEvidenceIndex) -> Evid
         api_key_env=args.api_key_env,
     )
     if args.court == "adversarial":
-        return AdversarialEvidenceCourt(index, backend)
+        return AdversarialEvidenceCourt(
+            index,
+            backend,
+            decomposer=ApertusClaimDecomposer(backend),
+            citation_auditor=CitationAuditor(backend),
+        )
     return EvidenceCourt(index, analyst=ApertusEvidenceAnalyst(backend))
 
 
 def main() -> int:
     args = build_parser().parse_args()
+
+    if args.command == "prepare-ost":
+        summary = prepare_ost_dataset(
+            args.output_dir,
+            dataset_name=args.dataset_name,
+            split=args.split,
+            chunk_chars=args.chunk_chars,
+            limit=args.limit,
+        )
+        print(json.dumps(summary.to_dict(), indent=2, ensure_ascii=False))
+        return 0
+
+
+    if args.command == "evaluate-ost-pairs":
+        from .ost_benchmark import evaluate_ost_pairs
+
+        if args.reasoner == "heuristic":
+            analyst = ConservativeHeuristicAnalyst()
+        else:
+            backend = OpenAICompatibleJsonBackend.from_env(
+                base_url=args.apertus_base_url,
+                model=args.apertus_model,
+                api_key_env=args.api_key_env,
+            )
+            analyst = ApertusEvidenceAnalyst(backend)
+
+        summary = evaluate_ost_pairs(
+            analyst,
+            evidence_path=args.evidence,
+            cases_path=args.cases,
+        )
+        if args.json:
+            print(json.dumps(summary.to_dict(), indent=2, ensure_ascii=False))
+        else:
+            print(f"Cases:          {summary.total}")
+            print(f"Correct:        {summary.correct}")
+            print(f"Accuracy:       {summary.accuracy:.3f}")
+            print(f"Macro F1:       {summary.macro_f1:.3f}")
+            print(f"Decisive rate:  {summary.decisive_rate:.3f}")
+            print(f"Abstention:     {summary.abstention_rate:.3f}")
+        return 0
 
     if args.command == "ingest":
         count = ingest_path(args.input, args.output, chunk_chars=args.chunk_chars)

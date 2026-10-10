@@ -9,3 +9,5 @@ venv/
 coverage.xml
 htmlcov/
 data/raw/
+
+data/ost/

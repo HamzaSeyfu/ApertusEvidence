@@ -46,7 +46,7 @@ def test_adversarial_court_support_flow() -> None:
     assert result.confidence == 0.9
     assert len(result.supporting) == 1
     assert result.contradicting == ()
-    assert "S1" in result.audit_notes[-1]
+    assert any("S1" in note for note in result.audit_notes)
 
 
 def test_adversarial_court_rejects_hallucinated_citation() -> None:
@@ -68,7 +68,7 @@ def test_adversarial_court_rejects_hallucinated_citation() -> None:
 
     assert result.verdict == Verdict.INSUFFICIENT_EVIDENCE
     assert result.confidence == 0.0
-    assert "failed closed" in result.audit_notes[0].lower()
+    assert any("failed closed" in note.lower() for note in result.audit_notes)
 
 
 def test_adversarial_court_abstains_without_agent_findings() -> None:
