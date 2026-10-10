@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any
 
 from .agents import AdversarialEvidenceCourt, CitationAuditor
-from .analysis import ApertusEvidenceAnalyst
+from .analysis import ApertusEvidenceAnalyst, ConservativeHeuristicAnalyst
 from .backend import OpenAICompatibleJsonBackend
 from .decomposition import ApertusClaimDecomposer
 from .ingest import ingest_path
@@ -88,6 +88,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional row limit for local smoke tests.",
     )
 
+
+    evaluate_ost = sub.add_parser(
+        "evaluate-ost-pairs",
+        help="Evaluate NLI reasoning on OST claim/reference pairs without retrieval.",
+    )
+    evaluate_ost.add_argument(
+        "--evidence",
+        default="data/ost/ost_evidence.jsonl",
+        help="Prepared OST evidence JSONL.",
+    )
+    evaluate_ost.add_argument(
+        "--cases",
+        default="data/ost/ost_cases.jsonl",
+        help="Prepared OST cases JSONL.",
+    )
+    evaluate_ost.add_argument(
+        "--reasoner",
+        choices=("heuristic", "apertus"),
+        default="heuristic",
+        help="Pairwise evidence reasoner.",
+    )
+    evaluate_ost.add_argument("--apertus-base-url")
+    evaluate_ost.add_argument("--apertus-model")
+    evaluate_ost.add_argument("--api-key-env", default="APERTUS_API_KEY")
+    evaluate_ost.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit structured JSON.",
+    )
+
     ingest = sub.add_parser(
         "ingest",
         help="Normalize PDF/TXT/MD source documents into a provenance-rich JSONL corpus.",
@@ -160,6 +190,36 @@ def main() -> int:
             limit=args.limit,
         )
         print(json.dumps(summary.to_dict(), indent=2, ensure_ascii=False))
+        return 0
+
+
+    if args.command == "evaluate-ost-pairs":
+        from .ost_benchmark import evaluate_ost_pairs
+
+        if args.reasoner == "heuristic":
+            analyst = ConservativeHeuristicAnalyst()
+        else:
+            backend = OpenAICompatibleJsonBackend.from_env(
+                base_url=args.apertus_base_url,
+                model=args.apertus_model,
+                api_key_env=args.api_key_env,
+            )
+            analyst = ApertusEvidenceAnalyst(backend)
+
+        summary = evaluate_ost_pairs(
+            analyst,
+            evidence_path=args.evidence,
+            cases_path=args.cases,
+        )
+        if args.json:
+            print(json.dumps(summary.to_dict(), indent=2, ensure_ascii=False))
+        else:
+            print(f"Cases:          {summary.total}")
+            print(f"Correct:        {summary.correct}")
+            print(f"Accuracy:       {summary.accuracy:.3f}")
+            print(f"Macro F1:       {summary.macro_f1:.3f}")
+            print(f"Decisive rate:  {summary.decisive_rate:.3f}")
+            print(f"Abstention:     {summary.abstention_rate:.3f}")
         return 0
 
     if args.command == "ingest":
