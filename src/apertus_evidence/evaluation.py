@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import Iterable, Protocol, Sequence
 
 from .models import FactCheckResult, Verdict
 
@@ -79,15 +79,26 @@ def evaluate(
     cases: Iterable[EvaluationCase],
 ) -> EvaluationSummary:
     materialized = list(cases)
+    predictions = [court.check(case.claim).verdict for case in materialized]
+    return summarize_predictions(materialized, predictions)
+
+
+def summarize_predictions(
+    cases: Sequence[EvaluationCase],
+    predictions: Sequence[Verdict],
+) -> EvaluationSummary:
+    if len(cases) != len(predictions):
+        raise ValueError("cases and predictions must have the same length")
+    if not cases:
+        raise ValueError("at least one evaluation case is required")
+
     labels = list(Verdict)
     counts = {label: {"tp": 0, "fp": 0, "fn": 0} for label in labels}
     failures: list[dict[str, str]] = []
     correct = 0
     abstentions = 0
 
-    for case in materialized:
-        result = court.check(case.claim)
-        predicted = result.verdict
+    for case, predicted in zip(cases, predictions, strict=True):
         expected = case.expected_verdict
 
         if predicted == Verdict.INSUFFICIENT_EVIDENCE:
@@ -136,12 +147,12 @@ def evaluate(
         }
         f1_scores.append(f1)
 
-    total = len(materialized)
-    abstention_rate = abstentions / total if total else 0.0
+    total = len(cases)
+    abstention_rate = abstentions / total
     return EvaluationSummary(
         total=total,
         correct=correct,
-        accuracy=round(correct / total if total else 0.0, 4),
+        accuracy=round(correct / total, 4),
         macro_f1=round(sum(f1_scores) / len(f1_scores), 4),
         decisive_rate=round(1.0 - abstention_rate, 4),
         abstention_rate=round(abstention_rate, 4),
