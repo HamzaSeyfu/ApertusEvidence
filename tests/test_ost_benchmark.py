@@ -56,4 +56,4 @@ def test_pairwise_ost_benchmark_isolated_from_retrieval(tmp_path: Path) -> None:
     assert summary.total == 3
     assert summary.correct == 3
     assert summary.accuracy == 1.0
-    assert summary.abstention_rate == 1 / 3
+    assert summary.abstention_rate == 0.3333
