@@ -15,6 +15,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 pdf = ["pypdf>=5.0"]
+ost = ["datasets>=3.0"]
 
 [project.scripts]
 apertus-evidence = "apertus_evidence.cli:main"
