@@ -8,7 +8,8 @@ from typing import Any
 
 from .agents import AdversarialEvidenceCourt, CitationAuditor
 from .analysis import ApertusEvidenceAnalyst
-from .backend import OpenAICompatibleJsonBackend\nfrom .decomposition import ApertusClaimDecomposer
+from .backend import OpenAICompatibleJsonBackend
+from .decomposition import ApertusClaimDecomposer
 from .ingest import ingest_path
 from .pipeline import EvidenceCourt
 from .retrieval import InMemoryEvidenceIndex
@@ -48,7 +49,7 @@ def _add_reasoning_options(parser: argparse.ArgumentParser) -> None:
         "--court",
         choices=("single", "adversarial"),
         default="single",
-        help="Use single-pass analysis or the two-sided Evidence Court.",
+        help="Use single-pass analysis or the full adversarial Evidence Court.",
     )
 
 
@@ -97,7 +98,10 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_court(args: argparse.Namespace, index: InMemoryEvidenceIndex) -> EvidenceCourt:
+def _build_court(
+    args: argparse.Namespace,
+    index: InMemoryEvidenceIndex,
+) -> EvidenceCourt | AdversarialEvidenceCourt:
     if args.reasoner == "heuristic":
         return EvidenceCourt(index)
 
