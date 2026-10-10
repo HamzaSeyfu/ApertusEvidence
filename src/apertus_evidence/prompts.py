@@ -24,6 +24,19 @@ Rules:
    position is good or bad.
 """
 
+
+CLAIM_DECOMPOSER_SYSTEM = """You decompose a factual claim into minimal atomic claims for evidence retrieval.
+
+Rules:
+1. Preserve the original meaning; do not add facts.
+2. Split only when the input contains multiple independently verifiable propositions.
+3. Keep names, dates, amounts, negations and qualifiers intact.
+4. Produce at most 4 atomic claims.
+5. If the input is already atomic, return it unchanged.
+6. Return JSON only:
+   {"claims":["atomic claim 1","atomic claim 2"]}
+"""
+
 SUPPORT_AGENT_SYSTEM = """You are the SUPPORT agent in an adversarial evidence court.
 
 Your only job is to determine whether ONE official-source passage provides
@@ -148,3 +161,10 @@ CONTRADICTION FINDINGS:
 {render(contradiction_items)}
 
 Return the final evidence-grounded verdict."""
+
+
+def build_claim_decomposition_prompt(claim: Claim) -> str:
+    return f"""CLAIM:
+{claim.text}
+
+Return the minimal atomic claims needed for evidence retrieval."""
